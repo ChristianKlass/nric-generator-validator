@@ -1,88 +1,66 @@
-#!/bin/bash 
+#!/bin/bash
 
-GetChecksum() {
-  # Take for example the NRIC number S1234567. 
-  # first digit you multiply by 2, 
-  # second multiply by 7, 
-  # third by 6, 
-  # fourth by 5, 
-  # fifth by 4, 
-  # sixth by 3, 
-  # seventh by 2. 
-  # Add the totals together. 
-  # So 1×2 + 2×7 + 3×6 + 4×5 + 5×4 + 6×3 + 7×2 = 106
+# Constants
+NRIC_LENGTH=8
+WEIGHTS=(2 7 6 5 4 3 2)
+PREFIX_ST=("J" "Z" "I" "H" "G" "F" "E" "D" "C" "B" "A")
+PREFIX_FG=("X" "W" "U" "T" "R" "Q" "P" "N" "M" "L" "K")
 
-  prefixIsSorT=("J" "Z" "I" "H" "G" "F" "E" "D" "C" "B" "A")
-  prefixIsForG=("X" "W" "U" "T" "R" "Q" "P" "N" "M" "L" "K")
+# Get checksum for an NRIC number (without the checksum character)
+get_checksum() {
+  local prefix=$1 number=$2 sum=0
 
-  PREFIX=$2
-  # echo "==============="
-  let SUM=0
-
-  for (( i = 0; i < ${#1}; ++i )); do
-    if [[ "$i" == 0 ]]; then
-      let CURR="$((2 * ${1:$i:1}))"
-      let SUM+="$CURR"
-    elif [[ $i -gt 0 ]]; then 
-      let CURR="$(((8 - $i) * ${1:$i:1}))"
-      let SUM+="$CURR"
-    fi
+  for (( i=0; i<${#number}; i++ )); do
+    sum=$(( sum + ${WEIGHTS[i]} * ${number:$i:1} ))
   done
 
-  # echo $SUM
-  if [[ "$PREFIX" == "T" || "$PREFIX" == "G" ]]; then
-    let SUM+=4
+  if [[ "$prefix" == "T" || "$prefix" == "G" ]]; then
+    sum=$(( sum + 4 ))
   fi
 
-  let RMD="$(($SUM % 11))"
+  remainder=$(( sum % 11 ))
 
-  if [[ "$PREFIX" == "S" || "$PREFIX" == "T" ]]; then
-    echo ${prefixIsSorT[$RMD]}
-  elif [[ "$PREFIX" == "F" || "$PREFIX " == "G" ]]; then
-    echo ${prefixIsForG[$RMD]}
+  if [[ "$prefix" == "S" || "$prefix" == "T" ]]; then
+    echo "${PREFIX_ST[$remainder]}"
+  else
+    echo "${PREFIX_FG[$remainder]}" 
   fi
 }
 
-GenerateNumber() {
-  digits=7
+# Generate a random NRIC number
+generate_nric() {
+  local prefix=$1
 
-  rand=$(od -A n -t d -N 2 /dev/urandom |tr -d ' ')
-  num=$((rand % 10))
-  while [ ${#num} -lt $digits ]; do
-    rand=$(od -A n -t d -N 1 /dev/urandom |tr -d ' ')
-    num="${num}$((rand % 10))"
+  # Generate random 7-digit number
+  number=$(printf "%07d" $(shuf -i 0-9999999 -n 1)) 
+
+  # Get checksum
+  checksum=$(get_checksum $prefix $number)
+
+  # Construct the full NRIC
+  echo "$prefix$number$checksum"
+}
+
+# Main function
+generate_nrics() {
+  local num_to_generate=$1 prefix=$2
+
+  # Input validation
+  if [[ -z "$num_to_generate" || -z "$prefix" ]]; then
+    echo "Usage: $0 <number_to_generate> <prefix>"
+    exit 1
+  fi
+
+  valid_prefixes=("S" "T" "F" "G")
+  if [[ ! " ${valid_prefixes[*]} " =~ " $prefix " ]]; then
+    echo "Invalid prefix!"
+    exit 1
+  fi
+
+  # Generate NRICs
+  for (( i=0; i<$num_to_generate; i++ )); do
+    generate_nric "$prefix"
   done
-
-  echo $num
 }
 
-GenerateNRICs() {
-  numberToGenerate=$1
-  PREFIX=$2
-
-  # echo $numberToGenerate
-  # echo $PREFIX
-
-  if [[ $numberToGenerate -lt 1 ]]; then
-    echo "Nothing to do. Maybe set a higher number!"
-  elif [[ $2 != "S" && $2 != "T" && $2 != "F" && $2 != "G" ]]; then
-    echo "Invalid Prefix $2!"
-  else 
-    for (( i = 0; i < $numberToGenerate; ++i )); do
-      NUMBER=$(GenerateNumber)
-      CHKSUM=$(GetChecksum $NUMBER $2)
-      TMPNRIC=$2$NUMBER$CHKSUM
-      echo "$TMPNRIC"
-      # echo "Prefix = $2"
-      # echo "number = $NUMBER"
-      # echo "chksum = $CHKSUM"
-    done
-  fi
-}
-
-GenerateNRICs $1 $2
-
-# Verified with online verification thingy - Should return a D.
-# GetChecksum '1234567' 'S'
-
-# GenerateNRICs 100 'S'
+generate_nrics "$@" 
